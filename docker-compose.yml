@@ -1,0 +1,150 @@
+services:
+  # -------------------------------------------------------------
+  # PostgreSQL Database
+  # -------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: social_insight_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      POSTGRES_DB: ${POSTGRES_DB:-social_insight}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-social_insight}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Redis (Cache, Rate Limiter & Celery Broker)
+  # -------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: social_insight_redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # FastAPI Application Backend
+  # -------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: social_insight_api
+    restart: always
+    profiles:
+      - docker-api
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-5032}:5032"
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 5032 --reload
+
+  # -------------------------------------------------------------
+  # Celery Background Worker (Data Ingestion & AI Tasks)
+  # -------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: social_insight_worker
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_SERVER=db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-Aa*123123}@db:5432/${POSTGRES_DB:-social_insight}
+      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
+
+  # -------------------------------------------------------------
+  # Celery Beat (Periodic Ingestion Scheduler)
+  # -------------------------------------------------------------
+  beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: social_insight_beat
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_SERVER=db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-Aa*123123}@db:5432/${POSTGRES_DB:-social_insight}
+      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=info
+
+  # -------------------------------------------------------------
+  # pgAdmin 4 (PostgreSQL Web GUI Interface)
+  # -------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: social_insight_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      - db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  # -------------------------------------------------------------
+  # Adminer (Lightweight Database GUI - Truy cập ngay tại port 8080)
+  # -------------------------------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: social_insight_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
