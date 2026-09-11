@@ -78,7 +78,12 @@ class Settings(BaseSettings):
 
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
-    META_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/meta/callback"
+    META_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/facebook/callback"
+    META_API_VERSION: str = "v20.0"
+
+    THREADS_APP_ID: Optional[str] = None
+    THREADS_APP_SECRET: Optional[str] = None
+    THREADS_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/threads/callback"
 
 
 settings = Settings()
