@@ -1,7 +1,32 @@
+from app.schemas.ai_insight import (
+    BestPostingTime,
+    ContentRecommendationsResponse,
+    ExecutiveSummaryResponse,
+    PostAIInsightResponse,
+    SentimentBreakdown,
+    TopicSentimentItem,
+    TrendingTopic,
+)
 from app.schemas.auth import LoginRequest, RefreshTokenRequest, Token, TokenPayload
-from app.schemas.metric import MetricSnapshotBase, MetricSnapshotResponse
+from app.schemas.metric import (
+    ChannelDetailResponse,
+    ChannelGrowthResponse,
+    GrowthMetric,
+    GrowthOverviewResponse,
+    InsightsSummaryResponse,
+    MetricSnapshotBase,
+    MetricSnapshotResponse,
+    PlatformBreakdownItem,
+    TimeSeriesPoint,
+    TimeSeriesResponse,
+    TopContentResponse,
+    TopPostItem,
+)
 from app.schemas.platform import (
     ConnectWithChannelIdRequest,
+    FacebookConnectPageRequest,
+    FacebookPageItem,
+    InstagramConnectRequest,
     OAuthAuthorizeUrlResponse,
     OAuthCallbackRequest,
     PlatformAccountBase,
@@ -10,7 +35,14 @@ from app.schemas.platform import (
     PlatformAccountUpdate,
     PlatformSyncResponse,
 )
-from app.schemas.post import PostBase, PostCreate, PostResponse
+from app.schemas.post import (
+    PostBase,
+    PostCreate,
+    PostListResponse,
+    PostResponse,
+    PostWithMetricsResponse,
+)
+from app.schemas.report import ReportExportRequest
 from app.schemas.user import UserBase, UserCreate, UserResponse, UserUpdate
 
 __all__ = [
@@ -29,11 +61,33 @@ __all__ = [
     "OAuthAuthorizeUrlResponse",
     "OAuthCallbackRequest",
     "ConnectWithChannelIdRequest",
+    "FacebookPageItem",
+    "FacebookConnectPageRequest",
+    "InstagramConnectRequest",
     "PlatformSyncResponse",
     "PostBase",
     "PostCreate",
     "PostResponse",
+    "PostWithMetricsResponse",
+    "PostListResponse",
     "MetricSnapshotBase",
     "MetricSnapshotResponse",
+    "GrowthMetric",
+    "ChannelGrowthResponse",
+    "GrowthOverviewResponse",
+    "PlatformBreakdownItem",
+    "InsightsSummaryResponse",
+    "TopPostItem",
+    "TopContentResponse",
+    "TimeSeriesPoint",
+    "TimeSeriesResponse",
+    "ChannelDetailResponse",
+    "SentimentBreakdown",
+    "TopicSentimentItem",
+    "PostAIInsightResponse",
+    "BestPostingTime",
+    "TrendingTopic",
+    "ContentRecommendationsResponse",
+    "ExecutiveSummaryResponse",
+    "ReportExportRequest",
 ]
-

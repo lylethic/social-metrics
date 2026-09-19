@@ -182,14 +182,29 @@ class MetaBaseConnector:
         When called with a long-lived user token, the returned page access tokens do not expire
         unless revoked or user password changes.
         """
-        data = await self.make_graph_request(
-            endpoint="/me/accounts",
-            params={
-                "fields": "id,name,category,access_token,tasks,picture{url},instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}"
-            },
-            access_token=user_access_token,
-        )
-        return data.get("data", [])
+        try:
+            data = await self.make_graph_request(
+                endpoint="/me/accounts",
+                params={
+                    "fields": "id,name,category,access_token,tasks,picture{url},instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}"
+                },
+                access_token=user_access_token,
+            )
+            return data.get("data", [])
+        except ConnectorAPIError as exc:
+            # If token is a Page Access Token, /me refers to the Page node (which has no 'accounts' field).
+            # Fallback to querying /me directly as a single Page node.
+            if "accounts" in str(exc) and "(#100)" in str(exc):
+                page_data = await self.make_graph_request(
+                    endpoint="/me",
+                    params={
+                        "fields": "id,name,category,picture{url},instagram_business_account{id,username,name,profile_picture_url,followers_count,media_count}"
+                    },
+                    access_token=user_access_token,
+                )
+                page_data["access_token"] = user_access_token
+                return [page_data]
+            raise
 
     async def get_page_access_token(self, page_id: str, user_access_token: str) -> str:
         """Fetch the specific Page Access Token for a given page_id."""

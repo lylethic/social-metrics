@@ -24,8 +24,8 @@ class Post(Base, UUIDMixin, TimestampMixin):
     post_type: Mapped[str] = mapped_column(String(50), default="video", nullable=False)  # video, short, reel, photo, text, thread
     title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     
     metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), nullable=True)

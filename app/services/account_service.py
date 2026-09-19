@@ -24,9 +24,11 @@ from app.core.exceptions import (
     ConflictException,
     NotFoundException,
 )
+from app.core.security import decrypt_token, encrypt_token
 from app.models.metric_snapshot import MetricSnapshot
 from app.models.platform_account import PlatformAccount
 from app.models.post import Post
+from app.services.analytics_service import calculate_engagement_rate
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +134,9 @@ class AccountService:
             existing.is_active = True
 
             if tokens:
-                existing.access_token = tokens.access_token
+                existing.access_token = encrypt_token(tokens.access_token)
                 if tokens.refresh_token:
-                    existing.refresh_token = tokens.refresh_token
+                    existing.refresh_token = encrypt_token(tokens.refresh_token)
                 existing.token_expires_at = token_expires_at
 
             await db.flush()
@@ -149,8 +151,8 @@ class AccountService:
                 account_name=profile.account_name,
                 account_handle=profile.account_handle,
                 avatar_url=profile.avatar_url,
-                access_token=tokens.access_token if tokens else None,
-                refresh_token=tokens.refresh_token if tokens else None,
+                access_token=encrypt_token(tokens.access_token) if tokens and tokens.access_token else None,
+                refresh_token=encrypt_token(tokens.refresh_token) if tokens and tokens.refresh_token else None,
                 token_expires_at=token_expires_at,
                 metadata_json=profile.metadata_json,
                 is_active=True,
@@ -198,28 +200,31 @@ class AccountService:
         if not account.access_token:
             return None
 
+        plain_access = decrypt_token(account.access_token)
+        plain_refresh = decrypt_token(account.refresh_token)
+
         # Check if expired or about to expire in next 2 minutes
         now = datetime.now(timezone.utc)
         if account.token_expires_at:
             expires_at = account.token_expires_at
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
-            if expires_at <= (now + timedelta(minutes=2)) and account.refresh_token:
+            if expires_at <= (now + timedelta(minutes=2)) and plain_refresh:
                 try:
                     connector = self.get_connector(account.platform)
-                    new_tokens = await connector.refresh_token(account.refresh_token)
-                    account.access_token = new_tokens.access_token
+                    new_tokens = await connector.refresh_token(plain_refresh)
+                    account.access_token = encrypt_token(new_tokens.access_token)
                     if new_tokens.refresh_token:
-                        account.refresh_token = new_tokens.refresh_token
+                        account.refresh_token = encrypt_token(new_tokens.refresh_token)
                     if new_tokens.expires_in:
                         account.token_expires_at = now + timedelta(seconds=new_tokens.expires_in)
                     await db.flush()
-                    return account.access_token
+                    return new_tokens.access_token
                 except Exception as exc:
                     logger.error(f"Failed to auto-refresh token for account {account.id}: {exc}")
                     raise ConnectorAuthError(f"Failed to refresh expired token: {exc}", platform=account.platform)
 
-        return account.access_token
+        return plain_access
 
     async def sync_account_data(
         self,
@@ -297,7 +302,15 @@ class AccountService:
             v_views = meta.get("views_count", 0)
             v_likes = meta.get("likes_count", 0)
             v_comments = meta.get("comments_count", 0)
-            er = ((v_likes + v_comments) / v_views * 100.0) if v_views > 0 else 0.0
+            v_shares = meta.get("shares_count", 0)
+            v_saves = meta.get("saves_count", 0)
+            er = calculate_engagement_rate(
+                likes=v_likes,
+                comments=v_comments,
+                shares=v_shares,
+                saves=v_saves,
+                views=v_views,
+            )
 
             post_snapshot = MetricSnapshot(
                 entity_type="post",
@@ -306,7 +319,9 @@ class AccountService:
                 views_count=v_views,
                 likes_count=v_likes,
                 comments_count=v_comments,
-                engagement_rate=round(er, 4),
+                shares_count=v_shares,
+                saves_count=v_saves,
+                engagement_rate=er,
                 captured_at=datetime.now(timezone.utc),
             )
             db.add(post_snapshot)

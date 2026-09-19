@@ -35,10 +35,6 @@ class YouTubeConnector(BaseSocialConnector):
 
     platform_name: str = "youtube"
 
-    GOOGLE_AUTH_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-    GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-    YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3"
-
     DEFAULT_SCOPES = [
         "https://www.googleapis.com/auth/youtube.readonly",
         "openid",
@@ -61,6 +57,11 @@ class YouTubeConnector(BaseSocialConnector):
         self.api_key = api_key or settings.YOUTUBE_API_KEY
         self.max_retries = max_retries
         self.backoff_factor = backoff_factor
+
+        # Endpoint URLs — sourced from settings so they can be overridden in .env
+        self.GOOGLE_AUTH_BASE_URL = settings.GOOGLE_AUTH_BASE_URL
+        self.GOOGLE_TOKEN_URL = settings.GOOGLE_TOKEN_URL
+        self.YOUTUBE_API_BASE_URL = settings.YOUTUBE_API_BASE_URL
 
     def get_authorization_url(self, state: str, redirect_uri: Optional[str] = None) -> str:
         """Generate Google OAuth2 consent URL for YouTube scopes."""

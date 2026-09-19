@@ -23,6 +23,7 @@ from app.core.exceptions import (
     NotFoundException,
     RateLimitException,
 )
+from app.core.security import decrypt_token, encrypt_token
 from app.models.user import User
 from app.schemas.platform import (
     ConnectWithChannelIdRequest,
@@ -35,6 +36,7 @@ from app.schemas.platform import (
     PlatformSyncResponse,
 )
 from app.services.account_service import account_service
+from app.services.cache_service import cache_service
 
 router = APIRouter(prefix="/platforms", tags=["Platforms"])
 youtube_connector = account_service.youtube_connector
@@ -210,6 +212,7 @@ async def sync_platform_account(
     try:
         sync_result = await account_service.sync_account_data(db, account, limit_posts=limit)
         await db.commit()
+        await cache_service.invalidate_user_insights(current_user.id)
         return sync_result
 
     except ConnectorQuotaExceededError as exc:
@@ -284,8 +287,9 @@ async def connect_facebook_oauth(
             profile=profile,
             tokens=tokens,
         )
-        # Store page access token directly in metadata or account token
-        account.access_token = page_access_token
+        # Store encrypted page access token for page queries, and user token for user/pages queries
+        account.access_token = encrypt_token(page_access_token)
+        account.refresh_token = encrypt_token(tokens.access_token)
         await db.commit()
         await db.refresh(account)
         return account
@@ -312,8 +316,11 @@ async def list_user_facebook_pages(
     if not token and db is not None:
         # Try finding existing connected Facebook or Instagram account token
         accounts = await account_service.list_by_user(db, current_user.id, platform="facebook")
-        if accounts and accounts[0].access_token:
-            token = accounts[0].access_token
+        if accounts:
+            if accounts[0].refresh_token:
+                token = decrypt_token(accounts[0].refresh_token)
+            if not token and accounts[0].access_token:
+                token = decrypt_token(accounts[0].access_token)
 
     if not token:
         raise BadRequestException(detail="An active Meta access token is required to list Facebook Pages.")
@@ -354,8 +361,11 @@ async def connect_facebook_page_by_id(
     token = payload.user_access_token
     if not token:
         accounts = await account_service.list_by_user(db, current_user.id, platform="facebook")
-        if accounts and accounts[0].access_token:
-            token = accounts[0].access_token
+        if accounts:
+            if accounts[0].refresh_token:
+                token = decrypt_token(accounts[0].refresh_token)
+            elif accounts[0].access_token:
+                token = decrypt_token(accounts[0].access_token)
 
     if not token:
         raise BadRequestException(detail="An access token is required to connect a Facebook Page.")

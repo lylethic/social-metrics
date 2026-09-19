@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.metric import MetricSnapshotResponse
 
 
 class PostBase(BaseModel):
@@ -31,3 +33,18 @@ class PostResponse(PostBase):
     platform_account_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+
+class PostWithMetricsResponse(PostResponse):
+    """Post response enriched with channel details and latest snapshot metrics."""
+    channel_name: Optional[str] = None
+    platform: Optional[str] = None
+    latest_metrics: Optional[MetricSnapshotResponse] = None
+
+
+class PostListResponse(BaseModel):
+    """Paginated list of posts."""
+    total: int
+    page: int
+    page_size: int
+    items: List[PostWithMetricsResponse] = Field(default_factory=list)
