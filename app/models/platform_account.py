@@ -24,7 +24,7 @@ class PlatformAccount(Base, UUIDMixin, TimestampMixin):
     platform_account_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     account_name: Mapped[str] = mapped_column(String(255), nullable=False)
     account_handle: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # OAuth Tokens (will be encrypted in production)
     access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

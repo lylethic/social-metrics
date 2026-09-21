@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    TOKEN_ENCRYPTION_KEY: Optional[str] = None  # Fernet key for encrypting OAuth tokens
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = ["*"]
@@ -76,9 +77,32 @@ class Settings(BaseSettings):
     YOUTUBE_CLIENT_SECRET: Optional[str] = None
     YOUTUBE_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/youtube/callback"
 
+    # Google / YouTube endpoint URLs (overridable for testing or proxy setups)
+    GOOGLE_AUTH_BASE_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+    YOUTUBE_API_BASE_URL: str = "https://www.googleapis.com/youtube/v3"
+
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
-    META_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/meta/callback"
+    META_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/facebook/callback"
+    META_API_VERSION: str = "v20.0"
+
+    THREADS_APP_ID: Optional[str] = None
+    THREADS_APP_SECRET: Optional[str] = None
+    THREADS_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/threads/callback"
+
+    # TikTok API Credentials
+    TIKTOK_CLIENT_KEY: Optional[str] = None
+    TIKTOK_CLIENT_SECRET: Optional[str] = None
+    TIKTOK_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/tiktok/callback"
+    TIKTOK_AUTH_BASE_URL: str = "https://www.tiktok.com/v2/auth/authorize/"
+    TIKTOK_TOKEN_URL: str = "https://open.tiktokapis.com/v2/oauth/token/"
+    TIKTOK_API_BASE_URL: str = "https://open.tiktokapis.com/v2"
+    TIKTOK_WEBHOOK_SECRET: Optional[str] = None
+
+    # Frontend Application URL for OAuth redirects
+    FRONTEND_URL: str = "http://localhost:3000"
+
 
 
 settings = Settings()

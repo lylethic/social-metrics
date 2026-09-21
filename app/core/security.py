@@ -77,3 +77,42 @@ def decode_token(token: str) -> Dict[str, Any]:
         return payload
     except JWTError:
         raise UnauthorizedException(detail="Invalid or expired token")
+
+
+# -------------------------------------------------------------
+# AES-GCM / Fernet Token Encryption
+# -------------------------------------------------------------
+
+def _get_fernet_key() -> bytes:
+    """Generate or retrieve a 32-byte url-safe base64 key for Fernet symmetric encryption."""
+    import base64
+    import hashlib
+    if settings.TOKEN_ENCRYPTION_KEY:
+        k = settings.TOKEN_ENCRYPTION_KEY.strip()
+        return k.encode() if isinstance(k, str) else k
+    # Deterministic fallback derived from SECRET_KEY
+    digest = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+def encrypt_token(token: Optional[str]) -> Optional[str]:
+    """Encrypt an OAuth token before saving it to PostgreSQL."""
+    if not token:
+        return None
+    from cryptography.fernet import Fernet
+    f = Fernet(_get_fernet_key())
+    return f.encrypt(token.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_token(cipher_text: Optional[str]) -> Optional[str]:
+    """Decrypt an encrypted OAuth token read from PostgreSQL. Falls back to original text if unencrypted."""
+    if not cipher_text:
+        return None
+    from cryptography.fernet import Fernet, InvalidToken
+    try:
+        f = Fernet(_get_fernet_key())
+        return f.decrypt(cipher_text.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception):
+        # Graceful fallback: return as-is for plaintext legacy tokens
+        return cipher_text
+

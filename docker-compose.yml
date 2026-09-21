@@ -50,6 +50,13 @@ services:
       - docker-api
     env_file:
       - .env
+    environment:
+      - POSTGRES_SERVER=db
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-Aa*123123}@db:5432/${POSTGRES_DB:-social_insight}
+      - REDIS_HOST=redis
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
     ports:
       - "${API_PORT:-5032}:5032"
     volumes:

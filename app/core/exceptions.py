@@ -39,3 +39,19 @@ class ForbiddenException(AppException):
 class ConflictException(AppException):
     def __init__(self, detail: str = "Resource already exists"):
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class RateLimitException(AppException):
+    def __init__(self, detail: str = "Rate limit exceeded. Please try again later."):
+        super().__init__(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail)
+
+
+class BadGatewayException(AppException):
+    def __init__(self, detail: str = "Bad gateway from upstream service"):
+        super().__init__(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+
+
+class ServiceUnavailableException(AppException):
+    def __init__(self, detail: str = "Service unavailable"):
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+
