@@ -225,3 +225,92 @@ async def test_connect_youtube_oauth_callback(client: AsyncClient, auth_headers)
     # Ensure sensitive tokens are NOT leaked in response
     assert "access_token" not in data
     assert "refresh_token" not in data
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_youtube_oauth_callback_success(client: AsyncClient, auth_headers):
+    """Test GET redirect callback from Google OAuth returning 302 to frontend dashboard."""
+    headers = await auth_headers(email="get_oauth_user@example.com")
+    me_resp = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_resp.status_code == 200
+    user_id = me_resp.json()["id"]
+
+    # Mock token exchange
+    respx.post("https://oauth2.googleapis.com/token").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "access_token": "ya29.oauth_token_get",
+                "refresh_token": "mock_refresh_token_get",
+                "token_type": "Bearer",
+                "expires_in": 3600,
+            },
+        )
+    )
+
+    # Mock channels?mine=true
+    respx.get("https://www.googleapis.com/youtube/v3/channels").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "UC_get_callback_channel",
+                        "snippet": {
+                            "title": "Channel Via Browser",
+                            "customUrl": "@browseryt",
+                        },
+                        "statistics": {
+                            "viewCount": "1000",
+                            "subscriberCount": "100",
+                            "videoCount": "5",
+                        },
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU_get_callback_channel"}},
+                    }
+                ]
+            },
+        )
+    )
+
+    from app.api.v1.endpoints.platforms import youtube_connector
+    youtube_connector.client_id = "test-client-id"
+    youtube_connector.client_secret = "test-client-secret"
+
+    valid_state = f"user_{user_id}_0123456789abcdef0123456789abcdef"
+    resp = await client.get(
+        f"/api/v1/platforms/youtube/callback?code=mock_code&state={valid_state}",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    location = resp.headers["location"]
+    assert "/dashboard/platforms" in location
+    assert "success=youtube_connected" in location
+    assert "Channel%20Via%20Browser" in location or "Channel+Via+Browser" in location or "Channel" in location
+
+
+@pytest.mark.asyncio
+async def test_get_youtube_oauth_callback_google_error(client: AsyncClient):
+    """Test GET callback with error from Google redirects to dashboard with error query param."""
+    resp = await client.get(
+        "/api/v1/platforms/youtube/callback?error=access_denied&error_description=User%20declined",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    location = resp.headers["location"]
+    assert "/dashboard/platforms" in location
+    assert "error=" in location
+
+
+@pytest.mark.asyncio
+async def test_get_youtube_oauth_callback_invalid_state(client: AsyncClient):
+    """Test GET callback with invalid state parameter redirects to dashboard with error."""
+    resp = await client.get(
+        "/api/v1/platforms/youtube/callback?code=any_code&state=invalid_format",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    location = resp.headers["location"]
+    assert "/dashboard/platforms" in location
+    assert "error=" in location

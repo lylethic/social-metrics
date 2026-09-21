@@ -91,5 +91,18 @@ class Settings(BaseSettings):
     THREADS_APP_SECRET: Optional[str] = None
     THREADS_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/threads/callback"
 
+    # TikTok API Credentials
+    TIKTOK_CLIENT_KEY: Optional[str] = None
+    TIKTOK_CLIENT_SECRET: Optional[str] = None
+    TIKTOK_REDIRECT_URI: str = "http://127.0.0.1:5032/api/v1/platforms/tiktok/callback"
+    TIKTOK_AUTH_BASE_URL: str = "https://www.tiktok.com/v2/auth/authorize/"
+    TIKTOK_TOKEN_URL: str = "https://open.tiktokapis.com/v2/oauth/token/"
+    TIKTOK_API_BASE_URL: str = "https://open.tiktokapis.com/v2"
+    TIKTOK_WEBHOOK_SECRET: Optional[str] = None
+
+    # Frontend Application URL for OAuth redirects
+    FRONTEND_URL: str = "http://localhost:3000"
+
+
 
 settings = Settings()

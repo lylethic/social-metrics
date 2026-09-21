@@ -18,11 +18,13 @@ from app.connectors.facebook import FacebookConnector
 from app.connectors.instagram import InstagramConnector
 from app.connectors.meta_base import MetaBaseConnector
 from app.connectors.threads import ThreadsConnector
+from app.connectors.tiktok import TikTokConnector
 from app.connectors.youtube import YouTubeConnector
 
 __all__ = [
     "BaseSocialConnector",
     "YouTubeConnector",
+    "TikTokConnector",
     "MetaBaseConnector",
     "FacebookConnector",
     "InstagramConnector",

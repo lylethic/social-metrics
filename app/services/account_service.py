@@ -18,6 +18,7 @@ from app.connectors.facebook import FacebookConnector
 from app.connectors.instagram import InstagramConnector
 from app.connectors.meta_base import MetaBaseConnector
 from app.connectors.threads import ThreadsConnector
+from app.connectors.tiktok import TikTokConnector
 from app.connectors.youtube import YouTubeConnector
 from app.core.exceptions import (
     BadRequestException,
@@ -42,6 +43,7 @@ class AccountService:
         self.facebook_connector = FacebookConnector(meta_base=self.meta_base)
         self.instagram_connector = InstagramConnector(meta_base=self.meta_base)
         self.threads_connector = ThreadsConnector()
+        self.tiktok_connector = TikTokConnector()
 
     def get_connector(self, platform: str) -> BaseSocialConnector:
         """Retrieve appropriate connector instance for given platform name."""
@@ -54,7 +56,10 @@ class AccountService:
             return self.instagram_connector
         elif p == "threads":
             return self.threads_connector
+        elif p == "tiktok":
+            return self.tiktok_connector
         raise BadRequestException(detail=f"Platform '{platform}' is not supported.")
+
 
     async def list_by_user(
         self,

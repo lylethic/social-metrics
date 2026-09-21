@@ -1,10 +1,13 @@
 """API Endpoints for Social Platform Accounts and Connectors."""
 
+import logging
 import secrets
 import uuid
 from typing import Annotated, List, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -16,6 +19,7 @@ from app.connectors.base import (
     ConnectorRateLimitError,
 )
 from app.connectors.youtube import YouTubeConnector
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.exceptions import (
     BadGatewayException,
@@ -43,7 +47,10 @@ youtube_connector = account_service.youtube_connector
 facebook_connector = account_service.facebook_connector
 instagram_connector = account_service.instagram_connector
 threads_connector = account_service.threads_connector
+tiktok_connector = account_service.tiktok_connector
 meta_base = account_service.meta_base
+logger = logging.getLogger(__name__)
+
 
 
 
@@ -99,6 +106,133 @@ async def get_youtube_authorization_url(
         )
     except ConnectorAuthError as exc:
         raise BadRequestException(detail=str(exc))
+
+
+@router.get(
+    "/youtube/callback",
+    summary="Handle YouTube OAuth browser redirect callback",
+    response_class=RedirectResponse,
+)
+async def handle_youtube_oauth_callback(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    code: Optional[str] = Query(None, description="Authorization code from Google"),
+    state: Optional[str] = Query(None, description="OAuth state containing user context"),
+    error: Optional[str] = Query(None, description="OAuth error from Google if user cancelled/denied"),
+    error_description: Optional[str] = Query(None, description="Description of the error if any"),
+):
+    """Handle GET redirect callback from Google OAuth2 consent screen.
+
+    Extracts user_id from state, exchanges authorization code for tokens,
+    retrieves YouTube channel metadata, links account, and redirects user
+    to the frontend platforms dashboard.
+    """
+    target_dashboard = f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/platforms"
+
+    if error:
+        err_msg = error_description or error
+        logger.warning(f"[YouTube OAuth] Google returned error callback: {err_msg}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Google OAuth error: {err_msg}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    if not code or not state:
+        logger.warning("[YouTube OAuth] Missing code or state in GET callback")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('Missing authorization code or state from Google')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Validate and extract user_id from state (format: user_{user_id}_{hex})
+    user_id: Optional[uuid.UUID] = None
+    if state.startswith("user_"):
+        parts = state.split("_")
+        if len(parts) >= 2:
+            try:
+                user_id = uuid.UUID(parts[1])
+            except (ValueError, TypeError):
+                user_id = None
+
+    if not user_id:
+        logger.warning(f"[YouTube OAuth] Invalid state received: {state}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('Invalid or expired OAuth state')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    user = await db.get(User, user_id)
+    if not user:
+        logger.warning(f"[YouTube OAuth] User not found for ID: {user_id}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('User account not found')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    try:
+        # 1. Exchange authorization code for tokens
+        tokens = await youtube_connector.authenticate(
+            auth_code=code,
+            redirect_uri=settings.YOUTUBE_REDIRECT_URI,
+        )
+
+        # 2. Fetch authenticated channel profile using the access token
+        profile = await youtube_connector.get_channel_profile(
+            account_id="mine",
+            access_token=tokens.access_token,
+        )
+
+        # 3. Create or update PlatformAccount in DB
+        account = await account_service.connect_or_update_account(
+            db=db,
+            user_id=user.id,
+            profile=profile,
+            tokens=tokens,
+        )
+        await db.commit()
+        await db.refresh(account)
+
+        channel_title = profile.account_name or (account.account_name if account else "YouTube Channel")
+        return RedirectResponse(
+            url=f"{target_dashboard}?success=youtube_connected&channel={quote(channel_title)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    except ConnectorAuthError as exc:
+        await db.rollback()
+        logger.error(f"[YouTube OAuth] Auth exchange failed: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Xác thực YouTube thất bại: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ConnectorQuotaExceededError as exc:
+        await db.rollback()
+        logger.error(f"[YouTube OAuth] Quota exceeded: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Hết hạn ngạch YouTube API: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ConnectorRateLimitError as exc:
+        await db.rollback()
+        logger.error(f"[YouTube OAuth] Rate limit: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Giới hạn tần suất gọi API YouTube: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ConnectorNotFoundError as exc:
+        await db.rollback()
+        logger.error(f"[YouTube OAuth] Channel not found: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Không tìm thấy kênh YouTube: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except (ConnectorAPIError, Exception) as exc:
+        await db.rollback()
+        err_detail = getattr(exc, "message", str(exc))
+        logger.error(f"[YouTube OAuth] Unexpected error connecting channel: {err_detail}", exc_info=True)
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Lỗi kết nối YouTube: {err_detail}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
 
 
 @router.post(
@@ -591,3 +725,184 @@ async def connect_threads_oauth(
     except ConnectorAPIError as exc:
         await db.rollback()
         raise BadGatewayException(detail=f"Threads upstream error: {exc.message}")
+
+
+# -------------------------------------------------------------
+# Official TikTok API Endpoints
+# -------------------------------------------------------------
+
+@router.get("/tiktok/authorize", response_model=OAuthAuthorizeUrlResponse, status_code=status.HTTP_200_OK)
+async def get_tiktok_authorization_url(
+    current_user: Annotated[User, Depends(get_current_user)],
+    redirect_uri: Optional[str] = Query(None, description="Optional custom redirect URI"),
+):
+    """Generate Official TikTok OAuth2 consent URL."""
+    state = f"user_{current_user.id}_{secrets.token_hex(16)}"
+    try:
+        auth_url = tiktok_connector.get_authorization_url(state=state, redirect_uri=redirect_uri)
+        return OAuthAuthorizeUrlResponse(
+            platform="tiktok",
+            authorization_url=auth_url,
+            state=state,
+        )
+    except ConnectorAuthError as exc:
+        raise BadRequestException(detail=str(exc))
+
+
+@router.get(
+    "/tiktok/callback",
+    summary="Handle TikTok OAuth browser redirect callback",
+    response_class=RedirectResponse,
+)
+async def handle_tiktok_oauth_callback(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    code: Optional[str] = Query(None, description="Authorization code from TikTok"),
+    state: Optional[str] = Query(None, description="OAuth state containing user context"),
+    error: Optional[str] = Query(None, description="OAuth error from TikTok if user denied"),
+    error_description: Optional[str] = Query(None, description="Description of the error if any"),
+):
+    """Handle GET redirect callback from TikTok OAuth2 consent screen.
+
+    Extracts user_id from state, exchanges authorization code for tokens,
+    retrieves creator profile metadata, links account, and redirects user
+    to the frontend platforms dashboard.
+    """
+    target_dashboard = f"{settings.FRONTEND_URL.rstrip('/')}/dashboard/platforms"
+
+    if error:
+        err_msg = error_description or error
+        logger.warning(f"[TikTok OAuth] TikTok returned error callback: {err_msg}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'TikTok OAuth error: {err_msg}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    if not code or not state:
+        logger.warning("[TikTok OAuth] Missing code or state in GET callback")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('Missing authorization code or state from TikTok')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    user_id: Optional[uuid.UUID] = None
+    if state.startswith("user_"):
+        parts = state.split("_")
+        if len(parts) >= 2:
+            try:
+                user_id = uuid.UUID(parts[1])
+            except (ValueError, TypeError):
+                user_id = None
+
+    if not user_id:
+        logger.warning(f"[TikTok OAuth] Invalid state received: {state}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('Invalid or expired OAuth state')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    user = await db.get(User, user_id)
+    if not user:
+        logger.warning(f"[TikTok OAuth] User not found for ID: {user_id}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('User account not found')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    try:
+        tokens = await tiktok_connector.authenticate(
+            auth_code=code,
+            redirect_uri=settings.TIKTOK_REDIRECT_URI,
+        )
+
+        profile = await tiktok_connector.get_channel_profile(
+            account_id="me",
+            access_token=tokens.access_token,
+        )
+
+        account = await account_service.connect_or_update_account(
+            db=db,
+            user_id=user.id,
+            profile=profile,
+            tokens=tokens,
+        )
+        await db.commit()
+        await db.refresh(account)
+
+        channel_title = profile.account_name or (account.account_name if account else "TikTok Account")
+        return RedirectResponse(
+            url=f"{target_dashboard}?success=tiktok_connected&channel={quote(channel_title)}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    except ConnectorAuthError as exc:
+        await db.rollback()
+        logger.error(f"[TikTok OAuth] Auth exchange failed: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Xác thực TikTok thất bại: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ConnectorRateLimitError as exc:
+        await db.rollback()
+        logger.error(f"[TikTok OAuth] Rate limit: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Giới hạn tần suất gọi API TikTok: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except ConnectorNotFoundError as exc:
+        await db.rollback()
+        logger.error(f"[TikTok OAuth] Profile not found: {exc.message}")
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote(f'Không tìm thấy kênh TikTok: {exc.message}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except Exception as exc:
+        await db.rollback()
+        logger.error(f"[TikTok OAuth] Unexpected error: {exc}", exc_info=True)
+        return RedirectResponse(
+            url=f"{target_dashboard}?error={quote('Lỗi hệ thống khi kết nối tài khoản TikTok')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+
+@router.post("/tiktok/callback", response_model=PlatformAccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/connect/tiktok", response_model=PlatformAccountResponse, status_code=status.HTTP_201_CREATED)
+async def connect_tiktok_oauth(
+    payload: OAuthCallbackRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Exchange TikTok OAuth code, fetch profile, and connect TikTok account (REST API)."""
+    try:
+        tokens = await tiktok_connector.authenticate(
+            auth_code=payload.code,
+            redirect_uri=payload.redirect_uri or settings.TIKTOK_REDIRECT_URI,
+        )
+
+        profile = await tiktok_connector.get_channel_profile(
+            account_id="me",
+            access_token=tokens.access_token,
+        )
+
+        account = await account_service.connect_or_update_account(
+            db=db,
+            user_id=current_user.id,
+            profile=profile,
+            tokens=tokens,
+        )
+        await db.commit()
+        await db.refresh(account)
+        return account
+
+    except ConnectorAuthError as exc:
+        await db.rollback()
+        raise BadRequestException(detail=f"TikTok auth failed: {exc.message}")
+    except ConnectorRateLimitError as exc:
+        await db.rollback()
+        raise RateLimitException(detail=f"TikTok rate limit reached: {exc.message}")
+    except ConnectorNotFoundError as exc:
+        await db.rollback()
+        raise NotFoundException(detail=f"TikTok profile not found: {exc.message}")
+    except ConnectorAPIError as exc:
+        await db.rollback()
+        raise BadGatewayException(detail=f"TikTok upstream error: {exc.message}")
+

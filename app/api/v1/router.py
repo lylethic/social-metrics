@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, channels, insights, platforms, posts, ai, reports
+from app.api.v1.endpoints import auth, channels, insights, platforms, posts, ai, reports, webhooks
 
 api_router = APIRouter()
 
@@ -23,3 +23,7 @@ api_router.include_router(ai.router)
 
 # Include Reports & Export Endpoints
 api_router.include_router(reports.router)
+
+# Include Webhook Endpoints
+api_router.include_router(webhooks.router)
+
