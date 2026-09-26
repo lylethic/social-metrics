@@ -15,12 +15,13 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Social Media Insight Service"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"
+    NGROK_BACKEND_URL: Optional[str] = None
 
     # Security & JWT
-    SECRET_KEY: str = "b91d293845fecda913e71295b92750e32b8492048f0293da826194bc02816f12"
-    ALGORITHM: str = "HS256"
+    SECRET_KEY: Optional[str] = None
+    ALGORITHM: Optional[str] = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: Optional[int] = None
     TOKEN_ENCRYPTION_KEY: Optional[str] = None  # Fernet key for encrypting OAuth tokens
 
     # CORS
@@ -85,7 +86,27 @@ class Settings(BaseSettings):
     # Google / YouTube endpoint URLs (overridable for testing or proxy setups)
     GOOGLE_AUTH_BASE_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+    GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v3/userinfo"
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None
     YOUTUBE_API_BASE_URL: str = "https://www.googleapis.com/youtube/v3"
+
+    @property
+    def effective_google_client_id(self) -> Optional[str]:
+        return self.GOOGLE_CLIENT_ID or self.YOUTUBE_CLIENT_ID
+
+    @property
+    def effective_google_client_secret(self) -> Optional[str]:
+        return self.GOOGLE_CLIENT_SECRET or self.YOUTUBE_CLIENT_SECRET
+
+    @property
+    def effective_google_redirect_uri(self) -> str:
+        if self.GOOGLE_REDIRECT_URI:
+            return self.GOOGLE_REDIRECT_URI
+        if self.NGROK_BACKEND_URL:
+            return f"{self.NGROK_BACKEND_URL.rstrip('/')}/api/v1/auth/google/callback"
+        return "http://127.0.0.1:5032/api/v1/auth/google/callback"
 
     META_APP_ID: Optional[str] = None
     META_APP_SECRET: Optional[str] = None
