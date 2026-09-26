@@ -51,6 +51,7 @@ htmlcov/
 *.pid
 celerybeat-schedule*
 celerybeat.pid
+ngrok.exe
 
 # Databases & Local data
 *.sqlite

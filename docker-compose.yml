@@ -120,7 +120,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.workers.celery_app.celery_app beat --loglevel=info
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=info -s /tmp/celerybeat-schedule
 
   # -------------------------------------------------------------
   # pgAdmin 4 (PostgreSQL Web GUI Interface)

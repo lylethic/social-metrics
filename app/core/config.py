@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     TOKEN_ENCRYPTION_KEY: Optional[str] = None  # Fernet key for encrypting OAuth tokens
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["*"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "*",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://either-negative-botanist.ngrok-free.dev",
+    ]
 
     # PostgreSQL Database
     POSTGRES_SERVER: str = "db"
