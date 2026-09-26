@@ -23,3 +23,13 @@ class LoginRequest(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class GoogleAuthUrlResponse(BaseModel):
+    url: str
+
+
+class GoogleLoginRequest(BaseModel):
+    code: Optional[str] = None
+    id_token: Optional[str] = None
+    redirect_uri: Optional[str] = None

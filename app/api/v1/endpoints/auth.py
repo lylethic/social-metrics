@@ -1,12 +1,21 @@
-from typing import Annotated
-from fastapi import APIRouter, Depends, status
+from typing import Annotated, Optional
+from urllib.parse import quote
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshTokenRequest, Token
+from app.schemas.auth import (
+    GoogleAuthUrlResponse,
+    GoogleLoginRequest,
+    LoginRequest,
+    RefreshTokenRequest,
+    Token,
+)
 from app.schemas.user import UserCreate, UserResponse
 from app.services.auth_service import auth_service
 
@@ -79,3 +88,103 @@ async def get_me(
 ) -> UserResponse:
     """Retrieve details of the currently logged-in user."""
     return current_user
+
+
+# ─── Google OAuth Endpoints ───────────────────────────────────────────────────
+
+
+@router.get(
+    "/google/url",
+    response_model=GoogleAuthUrlResponse,
+    summary="Get Google OAuth authorization URL",
+)
+async def get_google_auth_url(
+    state: Optional[str] = Query(None, description="Optional state parameter for CSRF protection"),
+    redirect_uri: Optional[str] = Query(None, description="Optional custom redirect URI"),
+) -> GoogleAuthUrlResponse:
+    """Return the Google OAuth consent URL for frontend redirection."""
+    url = auth_service.get_google_auth_url(state=state, redirect_uri=redirect_uri)
+    return GoogleAuthUrlResponse(url=url)
+
+
+@router.get(
+    "/google/login",
+    summary="Direct browser redirect to Google OAuth login screen",
+    response_class=RedirectResponse,
+)
+async def google_login_redirect(
+    state: Optional[str] = Query(None, description="Optional state parameter"),
+    redirect_uri: Optional[str] = Query(None, description="Optional custom redirect URI"),
+) -> RedirectResponse:
+    """Directly redirect the browser to Google's consent screen."""
+    url = auth_service.get_google_auth_url(state=state, redirect_uri=redirect_uri)
+    return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
+
+
+@router.get(
+    "/google/callback",
+    summary="Handle Google OAuth redirect callback",
+    response_class=RedirectResponse,
+)
+async def google_oauth_callback(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    code: Optional[str] = Query(None, description="Authorization code from Google"),
+    state: Optional[str] = Query(None, description="State param returned from Google"),
+    error: Optional[str] = Query(None, description="OAuth error if user denied consent"),
+    error_description: Optional[str] = Query(None, description="Description of OAuth error"),
+) -> RedirectResponse:
+    """Process Google OAuth redirect callback.
+
+    Exchanges authorization code for Google profile, finds or registers the user,
+    issues JWT tokens, and redirects back to the frontend application.
+    """
+    frontend_login_url = f"{settings.FRONTEND_URL.rstrip('/')}/login"
+
+    if error:
+        err_msg = error_description or error
+        return RedirectResponse(
+            url=f"{frontend_login_url}?error={quote(f'Google OAuth error: {err_msg}')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    if not code:
+        return RedirectResponse(
+            url=f"{frontend_login_url}?error={quote('Missing authorization code from Google.')}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    try:
+        user, tokens = await auth_service.login_or_register_with_google(
+            db=db,
+            code=code,
+            redirect_uri=settings.effective_google_redirect_uri,
+        )
+        callback_target = (
+            f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback"
+            f"?access_token={tokens.access_token}&refresh_token={tokens.refresh_token}"
+        )
+        return RedirectResponse(url=callback_target, status_code=status.HTTP_302_FOUND)
+    except Exception as exc:
+        return RedirectResponse(
+            url=f"{frontend_login_url}?error={quote(str(exc))}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+
+@router.post(
+    "/google",
+    response_model=Token,
+    summary="Authenticate with Google code or ID token via JSON body",
+)
+async def google_login_json(
+    body: GoogleLoginRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Token:
+    """Authenticate or register a user by sending a Google code or ID token via JSON body."""
+    _, tokens = await auth_service.login_or_register_with_google(
+        db=db,
+        code=body.code,
+        id_token_str=body.id_token,
+        redirect_uri=body.redirect_uri,
+    )
+    return tokens
