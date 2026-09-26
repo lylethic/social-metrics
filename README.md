@@ -1,4 +1,4 @@
-# 🚀 Docker Setup & Testing Guide
+# 🚀 Docker Setup & Testing Guide in Development
 
 ```bash
 cd social-insight
@@ -11,20 +11,25 @@ uvicorn app.main:app --host 127.0.0.1 --port 5032 --reload
 
 ## 1. Start the Entire Container Stack
 
+### 1.1. Build docker image
 ```bash
-docker-compose up -d --build
+docker-compose up --build
 ```
 
-### Terminal 1: Run the Celery Worker (Task Execution)
-
-```powershell
-celery -A app.workers.celery_app.celery_app worker --loglevel=info -P solo
+### 1.2. Run docker
+```
+docker-compose up db redis worker beat
 ```
 
-### Terminal 2: Run Celery Beat (Periodic Task Scheduler)
 
+### 1.3. Start ngrok for backend url
 ```powershell
-celery -A app.workers.celery_app.celery_app beat --loglevel=info
+.\ngrok.exe http 127.0.0.1:5032 --url https://either-negative-botanist.ngrok-free.dev
+```
+
+- Stop ngrok
+```powershell
+taskkill /f /im ngrok.exe
 ```
 
 ## 2. Run Database Migrations
