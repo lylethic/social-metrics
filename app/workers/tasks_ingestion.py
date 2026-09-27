@@ -16,7 +16,7 @@ from app.models.post import Post
 from app.services.account_service import account_service
 from app.services.analytics_service import calculate_engagement_rate
 from app.services.cache_service import cache_service
-from app.workers.celery_app import celery_app
+from app.workers.celery_app import celery_app, run_async
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +292,7 @@ async def async_sync_all_recent_posts(db: Optional[AsyncSession] = None) -> List
 def sync_channel_metrics_task(self, account_id: str) -> Dict[str, Any]:
     """Celery task to sync a single channel's profile and record a snapshot."""
     try:
-        return asyncio.run(async_sync_channel_metrics(uuid.UUID(account_id)))
+        return run_async(async_sync_channel_metrics(uuid.UUID(account_id)))
     except Exception as exc:
         logger.error(f"[Celery] sync_channel_metrics_task error for {account_id}: {exc}")
         raise self.retry(exc=exc)
@@ -307,7 +307,7 @@ def sync_posts_metrics_task(
 ) -> Dict[str, Any]:
     """Celery task to sync posts and metrics for a channel."""
     try:
-        return asyncio.run(
+        return run_async(
             async_sync_posts_metrics(uuid.UUID(account_id), limit=limit, recent_only=recent_only)
         )
     except Exception as exc:
@@ -322,7 +322,7 @@ def sync_all_active_channels_task() -> Dict[str, Any]:
     Configured to run periodically every 6 hours.
     """
     logger.info("[Celery Beat] Running sync_all_active_channels_task...")
-    results = asyncio.run(async_sync_all_channels())
+    results = run_async(async_sync_all_channels())
     return {"status": "completed", "total_processed": len(results)}
 
 
@@ -333,5 +333,5 @@ def sync_all_recent_posts_task() -> Dict[str, Any]:
     Configured to run periodically every 2 hours to catch fast-moving engagement.
     """
     logger.info("[Celery Beat] Running sync_all_recent_posts_task...")
-    results = asyncio.run(async_sync_all_recent_posts())
+    results = run_async(async_sync_all_recent_posts())
     return {"status": "completed", "total_processed": len(results)}
