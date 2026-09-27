@@ -21,6 +21,7 @@ async def close_redis_pool() -> None:
     global redis_client
     if redis_client is not None:
         await redis_client.close()
+        redis_client = None
 
 
 async def get_redis() -> aioredis.Redis:
