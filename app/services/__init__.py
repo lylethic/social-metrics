@@ -10,6 +10,7 @@ from app.services.analytics_service import (
 )
 from app.services.auth_service import AuthService, auth_service
 from app.services.cache_service import CacheService, cache_service
+from app.services.legal_service import LegalService, legal_service
 from app.services.report_service import ReportService, report_service
 
 __all__ = [
@@ -27,4 +28,6 @@ __all__ = [
     "ai_insight_service",
     "ReportService",
     "report_service",
+    "LegalService",
+    "legal_service",
 ]

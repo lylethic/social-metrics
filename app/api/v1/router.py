@@ -1,5 +1,15 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, channels, insights, platforms, posts, ai, reports, webhooks
+from app.api.v1.endpoints import (
+    ai,
+    auth,
+    channels,
+    insights,
+    legal,
+    platforms,
+    posts,
+    reports,
+    webhooks,
+)
 
 api_router = APIRouter()
 
@@ -26,4 +36,7 @@ api_router.include_router(reports.router)
 
 # Include Webhook Endpoints
 api_router.include_router(webhooks.router)
+
+# Include Legal Endpoints
+api_router.include_router(legal.router)
 
