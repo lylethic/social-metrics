@@ -26,30 +26,9 @@ from app.schemas.ai_insight import (
 )
 from app.services.account_service import account_service
 from app.services.analytics_service import analytics_service
+from app.utils.words import NEGATIVE_WORDS, POSITIVE_WORDS, STOP_WORDS, TOXIC_WORDS
 
 logger = logging.getLogger(__name__)
-
-
-# -------------------------------------------------------------
-# Sentiment Lexicon & Heuristics (Bilingual: EN & VI)
-# -------------------------------------------------------------
-
-POSITIVE_WORDS = {
-    "great", "awesome", "excellent", "love", "good", "amazing", "helpful", "super",
-    "best", "fantastic", "insightful", "valuable", "thank", "thanks", "perfect",
-    "tuyệt", "hay", "tốt", "xuất sắc", "thích", "hữu ích", "cảm ơn", "đẹp", "chuẩn", "đỉnh",
-}
-
-NEGATIVE_WORDS = {
-    "bad", "terrible", "horrible", "worst", "hate", "boring", "useless", "disappointed",
-    "poor", "waste", "confusing", "annoying", "fail", "slow", "broken",
-    "tệ", "dở", "chán", "thất vọng", "kém", "lãng phí", "vô ích", "sai", "lỗi", "chậm",
-}
-
-TOXIC_WORDS = {
-    "scam", "fraud", "fake", "idiot", "stupid", "trash", "spam", "bot",
-    "lừa đảo", "rác", "ngu", "khốn", "chửi", "spam", "gian lận",
-}
 
 
 def rule_based_sentiment_classify(text: str) -> str:
@@ -136,7 +115,6 @@ class AIInsightService:
         neu_cnt = 0
 
         words_counter = Counter()
-        stop_words = {"the", "a", "an", "is", "in", "and", "or", "for", "to", "of", "video", "post", "this", "that", "it", "very", "và", "là", "của", "cho", "ở", "với", "rất"}
 
         for c in comments:
             label = rule_based_sentiment_classify(c.content)
@@ -151,7 +129,7 @@ class AIInsightService:
 
             # Extract words for topics
             tokens = re.findall(r"\b[a-zA-ZÀ-ỹ]{3,}\b", c.content.lower())
-            filtered = [t for t in tokens if t not in stop_words and t not in POSITIVE_WORDS and t not in NEGATIVE_WORDS]
+            filtered = [t for t in tokens if t not in STOP_WORDS and t not in POSITIVE_WORDS and t not in NEGATIVE_WORDS]
             words_counter.update(filtered)
 
         pos_pct = round((pos_cnt / total) * 100.0, 1)
